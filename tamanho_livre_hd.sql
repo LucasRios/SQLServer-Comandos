@@ -1,0 +1,28 @@
+-- Seleciona informações distintas de volumes e espaço em disco usados pelas bases de dados
+SELECT DISTINCT 
+    -- Nome lógico do volume associado ao arquivo de banco de dados
+    dovs.logical_volume_name AS LogicalName,
+
+    -- Caminho do ponto de montagem (ex: C:\, D:\ ou caminho de volume montado)
+    dovs.volume_mount_point AS Drive,
+
+    -- Espaço livre disponível no volume (em GB)
+    -- Divide os bytes disponíveis por 1024^3 (1048576*1024) para converter bytes → GB
+    CONVERT(INT, (dovs.available_bytes / 1048576.0) / 1024) AS FreeSpaceInGB,
+
+    -- Tamanho total do volume (em GB)
+    (dovs.total_bytes / 1048576.0) / 1024 AS Total_GB,
+
+    -- Subconsulta que calcula o tamanho total de todos os bancos de dados
+    -- Somando os tamanhos de todos os arquivos (data e log) em MB e convertendo para GB
+    (SELECT (SUM(size) * 8) / 1048576.0 AS Tamanho
+     FROM sys.databases DB
+     INNER JOIN sys.master_files
+         ON DB.database_id = sys.master_files.database_id) AS banco_GB
+
+-- Fonte principal: lista de arquivos de todos os bancos de dados
+FROM sys.master_files mf
+
+-- CROSS APPLY: executa a função sys.dm_os_volume_stats() para cada arquivo retornado
+-- Essa função retorna informações de sistema sobre o volume onde o arquivo está armazenado
+CROSS APPLY sys.dm_os_volume_stats(mf.database_id, mf.FILE_ID) dovs;
